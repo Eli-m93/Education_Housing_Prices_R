@@ -1,0 +1,75 @@
+---
+title: "Clean & Merge Data"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr); library(ggplot2); library(tidyverse); library(tidylog)
+setwd("C:/Users/emogel/Desktop/Spring 2021/Big Data/assignments/Data")
+```
+
+# Step one, Load in Data
+The first data "Zillow_Housing_Prices" contains housing prices from 1997 to 2020 of every recorded home prices for Census designated counties (County FIPS codes). The unit of observation is county by year.
+
+```{r, message='hide', results='hide', echo=TRUE}
+zillow <- read_csv("./zillow_housing_prices.csv") %>% 
+  rename(year = date, key = FIPS) 
+```
+
+```{r}
+head(zillow)
+```
+
+The next pieces of data comes from the "The Educational Opportunity Project at Stanford University". 
+
+"cov.csv" contains covariate information gathered from The Common Core of Data (CCD), the American Community Survey (APS), or Edfacts. For example, it has info on parent's income in a county, or the racial composition of school children in a county. All data spans from 2009 to 2018. The unit of observation is county, by grade, by year
+
+"grades.csv" contains national test scores for all students, broken down by demographic info. The unit of observation is county, by grade, by subject, by year.
+
+We rename "sedacounty" to key for merging purposes. 
+```{r message='hide', results = FALSE}
+cov <- read_csv("./cov.csv") %>% rename(key = sedacounty)
+grades <- read_csv("./grades.csv") %>% rename(key = sedacounty)
+```
+```{r}
+head(cov)
+head(grades)
+```
+
+
+
+# Step Two, merge data
+
+First lets merge the covariates with the grades. We perform an inner_join as we want to only keep and analyze counties that have grade information and vice versa. 
+```{r}
+school_info <- cov %>% 
+  inner_join(grades, by = c("key", "year", "grade"))
+```
+Next, merge in info with home prices for each county, not all will merge because we do not have school data that goes back to 1997 and zillow wont have home price data for all counties. 
+```{r}
+full_data <- school_info %>% 
+  inner_join(zillow, by = c("key", "year"))
+```
+# Step Three, Clean
+There's over 100 variables, but many of these is information not relevant to our study so we drop them for ease of use
+```{r}
+cleaned_data <- full_data %>% 
+  select(-contains("se_")) %>% 
+  select(-contains("tot")) %>% 
+  select(-contains("zillow")) 
+
+colnames(cleaned_data) <- gsub("gcs_mn", "student_scores", colnames(cleaned_data))
+```
+# Step Four, Long and Wide 
+Currently the data is long. The unit of observation is state, by county, by year, by grade, by subject. Therefore each row is a state in America (All States + DC), a certain county within the state, the specific year (2009-2018), the grade (grades 3 - 8), and school subject (Math, or English). While the current unit of observation is extremely granular we expect to collapse the data down to more general terms for analysis. For example we could take the average academic performance for all grades and all subjects per year instead. 
+
+We think we should not make the data wide. Currently we have 87 variables in our dataset, making the data wide would mean that many variables would need to be duplicated for each year , each grade, and each subject. This would create a dataset where the unit of observation is just a county, but the number of columns would easily reach into the mid hundreds. 
+
+The final data looks like this:
+```{r}
+cleaned_data %>% select(CountyName, year, grade, subject, student_scores_all, home_value = val) 
+```
+
